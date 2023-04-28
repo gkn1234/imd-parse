@@ -1,10 +1,10 @@
 import { readFile, writeFile } from 'fs/promises'
 import { basename } from 'path'
 
-function toJson(buffer, key) {
+function toJson(buffer, key, version) {
   const result = {
     signature: "BNDQ",
-    version: "1.3.0",
+    version: version,
     tracks: []
   }
 
@@ -16,7 +16,7 @@ function toJson(buffer, key) {
   }
 
   const durationtime = buffer.readUInt32LE(0)
-  result.durationtime = durationtime
+  // result.durationtime = durationtime
   
   /** 时间戳数 */
   const sectionNum = buffer.readUInt32LE(4)
@@ -26,7 +26,7 @@ function toJson(buffer, key) {
   const beatTime = 60000 / bpm
   const tickTime = beatTime / 48
 
-  result.duration = Math.round(durationtime / tickTime)
+  // result.duration = Math.round(durationtime / tickTime)
 
   let offset = 14 + sectionNum * 12
   const noteRows = buffer.readUInt32LE(offset - 4)
@@ -37,18 +37,15 @@ function toJson(buffer, key) {
       dur: 0,
       isEnd: 0,
       toTrack: 0,
-      volume: 0,
-      pan: 0,
+      volume: 127,
+      pan: 64,
       attr: 0,
-      time: 0,
-      time_dur: 0,
-      idx: i
     }
     const type = buffer.readUInt16LE(offset)
     offset += 2
 
     const time = buffer.readUInt32LE(offset)
-    note.time = time
+    // note.time = time
     note.tick = Math.round(time / tickTime)
     offset += 4
 
@@ -76,7 +73,7 @@ function resolveNote(note, type, track, actionValue, tickTime) {
 
   const isHold = type % 2 === 0
   note.toTrack = isHold ? track : track + actionValue
-  note.time_dur = actionValue
+  // note.time_dur = actionValue
   note.dur = isHold ? Math.round(actionValue / tickTime) : 0
 
   if (type < 32) {
@@ -100,13 +97,13 @@ function resolveNote(note, type, track, actionValue, tickTime) {
 }
 
 async function main() {
-  const [,, imdPath, key] = process.argv
+  const [,, imdPath, key, version = '1.2.2'] = process.argv
   const buffer = await readFile(imdPath)
   const imdFileName = basename(imdPath)
   const dotIndex = imdFileName.indexOf('.')
   const imdFileNameWithoutExt = dotIndex >= 0 ? imdFileName.slice(0, dotIndex) : imdFileName
   
-  const json = toJson(buffer, Number(key))
+  const json = toJson(buffer, Number(key), version)
   await writeFile(`${imdFileNameWithoutExt}.json`, JSON.stringify(json), 'utf-8')
 }
 

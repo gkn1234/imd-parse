@@ -9,27 +9,53 @@ async function fromJson(dir) {
 function toImd(json) {
   const {
     tempo: bpm,
-    durationtime,
     tracks,
   } = json
 
   /** 每拍长度 */
   const beatTime = 60000 / bpm
-
-  /** 时间戳数 */
-  const sectionNum = Math.ceil(durationtime / beatTime) + 1
+  const tickTime = beatTime / 48
 
   /** 谱面列表 */
   const notesList = tracks
     .reduce((cur, item) => {
       item.note.forEach((note) => {
         note.track = item.track
+        note.time = Math.round(note.tick * tickTime)
+        note.time_dur = Math.round(note.dur * tickTime)
       })
       return cur.concat(item.note)
     }, [])
     .sort((a, b) => {
-      return a.idx - b.idx
+      // 粗排序
+      if (a.tick !== b.tick) {
+        return a.tick - b.tick
+      }
+
+      if (a.isEnd !== b.isEnd) {
+        return a.isEnd - b.isEnd
+      }
+
+      const tapDelta = Number(isTap(b)) - Number(isTap(a))
+      if (tapDelta !== 0) {
+        return tapDelta
+      }
+
+      const slideDelta = Number(isSlide(b)) - Number(isSlide(a))
+      if (slideDelta !== 0) {
+        return slideDelta
+      }
+      return a.track - b.track
     })
+
+  const duration = getDuration(notesList)
+  const durationtime = duration * tickTime
+
+  /** 时间戳数 */
+  const sectionNum = Math.ceil(durationtime / beatTime) + 1
+  
+  // 提取面条
+  sortNotes(notesList)
 
   /** imd 字节数 */
   const imdByteNum = 14 + sectionNum * 12 + notesList.length * 11
@@ -70,6 +96,100 @@ function toImd(json) {
   return Buffer.from(imdBytes)
 }
 
+function getDuration(notes) {
+  const lastNode = notes[notes.length - 1]
+  let latestTick = lastNode.tick + lastNode.dur
+  for (let i = notes.length - 2; i >= 0; i--) {
+    const note = notes[i]
+    const endTick = note.tick + note.dur
+    if (endTick > latestTick) {
+      latestTick = endTick
+    }
+  }
+  // 假定歌曲结束时间为最后一个动作完成后的 4 拍之后
+  return latestTick + 4 * 48
+}
+
+function sortNotes(notes) {
+  for (let i = 0; i < notes.length; i++) {
+    const note = notes[i]
+    if (isSingleAction(note)) {
+      continue
+    }
+
+    if (i === 32) {
+      console.log(i)
+    }
+
+    if (isLineStart(note)) {
+      const tempNotes = [];
+      let j = i + 1
+      console.log('start')
+      // console.log(notes[j])
+      let cur = note
+      do {
+        j = lineNextNode(notes, cur, j)
+        if (j !== null) {
+          // console.log(notes[j])
+          const spliceNodes = notes.splice(j, 1)
+          cur = spliceNodes[0]
+          tempNotes.push(spliceNodes[0])          
+        }
+      } while (j !== null)
+      console.log('end')
+      notes.splice(i + 1, 0, ...tempNotes)
+      i += tempNotes.length
+      continue
+    }
+
+    if (isLineProcess(note) || isLineEnd(note)) {
+      throw new Error('Found invalid broken line!')
+    }
+  }
+}
+
+function lineNextNode(notes, note, index) {
+  console.log(note)
+  if (note.isEnd === 1) {
+    console.log(5)
+    return null
+  }
+
+  const isHoldNote = isHold(note)
+  for (let i = index; i < notes.length; i++) {
+    const cur = notes[i]
+    console.log(cur)
+    if (
+      isHoldNote &&
+      (isLineProcess(cur) || isLineEnd(cur)) && 
+      cur.track === note.track &&
+      // 因为舍入问题，先这样写判断条件，以后再详细考虑
+      Math.abs(cur.tick - note.tick - note.dur) <= 1
+    ) {
+      console.log(1)
+      return i
+    }
+    if (isHoldNote && cur.tick - note.tick - note.dur > 1) {
+      console.log(2)
+      return null
+    }
+    if (
+      !isHoldNote &&
+      (isLineProcess(cur) || isLineEnd(cur)) &&
+      cur.track === note.toTrack &&
+      cur.tick === note.tick
+    ) {
+      console.log(3)
+      return i
+    }
+    if (!isHoldNote && cur.tick > note.tick) {
+      console.log(4)
+      return null
+    }
+  }
+  return null
+}
+
 
 function writeInt(bytes, value, from, len) {
   const newBuffer = new Uint8Array(len);
@@ -92,6 +212,34 @@ function writeInt(bytes, value, from, len) {
 function writeFloat(bytes, value, from) {
   const view = new DataView(bytes.buffer, from, 8)
   view.setFloat64(0, value, true)
+}
+
+function isTap(note) {
+  return note.toTrack === 0
+}
+
+function isHold(note) {
+  return note.toTrack === note.track
+}
+
+function isSlide(note) {
+  return !isHold(note) && !isTap(note)
+}
+
+function isSingleAction(note) {
+  return (!isTap(note) && note.isEnd === 1 && note.attr === 3) || isTap(note)
+}
+
+function isLineStart(note) {
+  return note.isEnd === 0 && note.attr === 3
+}
+
+function isLineProcess(note) {
+  return note.isEnd === 0 && note.attr === 4
+}
+
+function isLineEnd(note) {
+  return note.isEnd === 1 && note.attr === 4
 }
 
 function noteTypeValue(note) {
