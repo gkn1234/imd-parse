@@ -1,5 +1,4 @@
-import { readFile, writeFile } from 'fs/promises'
-import { basename } from 'path'
+import { readFile, writeFile } from 'node:fs/promises'
 
 async function fromJson(dir) {
   const buffer = await readFile(dir, 'utf-8')
@@ -117,26 +116,18 @@ function sortNotes(notes) {
       continue
     }
 
-    if (i === 32) {
-      console.log(i)
-    }
-
     if (isLineStart(note)) {
       const tempNotes = [];
       let j = i + 1
-      console.log('start')
-      // console.log(notes[j])
       let cur = note
       do {
         j = lineNextNode(notes, cur, j)
         if (j !== null) {
-          // console.log(notes[j])
           const spliceNodes = notes.splice(j, 1)
           cur = spliceNodes[0]
           tempNotes.push(spliceNodes[0])          
         }
       } while (j !== null)
-      console.log('end')
       notes.splice(i + 1, 0, ...tempNotes)
       i += tempNotes.length
       continue
@@ -149,16 +140,13 @@ function sortNotes(notes) {
 }
 
 function lineNextNode(notes, note, index) {
-  console.log(note)
   if (note.isEnd === 1) {
-    console.log(5)
     return null
   }
 
   const isHoldNote = isHold(note)
   for (let i = index; i < notes.length; i++) {
     const cur = notes[i]
-    console.log(cur)
     if (
       isHoldNote &&
       (isLineProcess(cur) || isLineEnd(cur)) && 
@@ -166,11 +154,9 @@ function lineNextNode(notes, note, index) {
       // 因为舍入问题，先这样写判断条件，以后再详细考虑
       Math.abs(cur.tick - note.tick - note.dur) <= 1
     ) {
-      console.log(1)
       return i
     }
     if (isHoldNote && cur.tick - note.tick - note.dur > 1) {
-      console.log(2)
       return null
     }
     if (
@@ -179,11 +165,9 @@ function lineNextNode(notes, note, index) {
       cur.track === note.toTrack &&
       cur.tick === note.tick
     ) {
-      console.log(3)
       return i
     }
     if (!isHoldNote && cur.tick > note.tick) {
-      console.log(4)
       return null
     }
   }
@@ -281,15 +265,8 @@ function noteDuration(note) {
   return note.toTrack - note.track
 }
 
-async function main() {
-  const [,, jsonPath] = process.argv
+export async function jsonToImd(jsonPath, imdPath) {
   const json = await fromJson(jsonPath)
-  const jsonFileName = basename(jsonPath)
-  const dotIndex = jsonFileName.indexOf('.')
-  const jsonFileNameWithoutExt = dotIndex >= 0 ? jsonFileName.slice(0, dotIndex) : jsonFileName
-
   const buffer = toImd(json)
-  await writeFile(`${jsonFileNameWithoutExt}.imd`, buffer, 'binary')
+  await writeFile(imdPath, buffer, 'binary')
 }
-
-main()

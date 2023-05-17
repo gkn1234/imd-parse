@@ -1,5 +1,4 @@
-import { readFile, writeFile } from 'fs/promises'
-import { basename } from 'path'
+import { readFile, writeFile } from 'node:fs/promises'
 
 function toJson(buffer, key, version) {
   const result = {
@@ -96,15 +95,8 @@ function resolveNote(note, type, track, actionValue, tickTime) {
   }
 }
 
-async function main() {
-  const [,, imdPath, key, version = '1.2.2'] = process.argv
+export async function imdToJson(imdPath, jsonPath, key, version) {
   const buffer = await readFile(imdPath)
-  const imdFileName = basename(imdPath)
-  const dotIndex = imdFileName.indexOf('.')
-  const imdFileNameWithoutExt = dotIndex >= 0 ? imdFileName.slice(0, dotIndex) : imdFileName
-  
   const json = toJson(buffer, Number(key), version)
-  await writeFile(`${imdFileNameWithoutExt}.json`, JSON.stringify(json), 'utf-8')
+  await writeFile(jsonPath, JSON.stringify(json), 'utf-8')
 }
-
-main()
